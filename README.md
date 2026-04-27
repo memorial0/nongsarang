@@ -1,1 +1,1 @@
-#start
+game_setu
