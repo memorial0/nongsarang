@@ -1,4 +1,6 @@
-// --- Types ---
+// [공지] 본 기준값 및 로직은 발표용 데모 기준입니다.
+// 실제 서비스에서는 농촌진흥청 농사로, 토양검정 DB, 작물별 표준시비량 데이터를 기반으로 고도화 예정입니다.
+
 export interface CalibrationResult {
   calibratedN: number;
   calibratedP: number;
@@ -19,77 +21,70 @@ export interface PrescriptionResult {
   nextDiagnosis: string;
 }
 
-// --- Data Standards ---
+// 1. 작물별 NPK 적정 기준
 export const cropStandards: Record<string, any> = {
-  "토마토": {
-    n: { min: 80, max: 120 },
-    p: { min: 40, max: 70 },
-    k: { min: 100, max: 160 },
-    description: "토마토는 과실 비대기에 칼륨 요구량이 매우 높으며, 질소 과잉 시 웃자람이 발생할 수 있습니다."
-  },
-  "딸기": {
-    n: { min: 60, max: 90 },
-    p: { min: 30, max: 50 },
-    k: { min: 80, max: 120 },
-    description: "딸기는 낮은 농도의 영양액을 선호하며, 정밀한 칼륨 밸런스가 당도를 결정합니다."
-  },
-  "상추": {
-    n: { min: 70, max: 110 },
-    p: { min: 30, max: 60 },
-    k: { min: 70, max: 110 },
-    description: "상추는 질소 공급이 생육 속도를 결정하며, 과습 시 뿌리 활력이 저하됩니다."
-  },
-  "오이": {
-    n: { min: 90, max: 130 },
-    p: { min: 40, max: 80 },
-    k: { min: 110, max: 170 },
-    description: "오이는 수분 흡수가 매우 빨라 비료 농도 변화에 민감하므로 꾸준한 공급이 필요합니다."
-  },
-  "고추": {
-    n: { min: 85, max: 125 },
-    p: { min: 35, max: 65 },
-    k: { min: 105, max: 165 },
-    description: "고추는 착과기 이후 양분 소모가 급격히 늘어나므로 적기 시비가 필수적입니다."
-  }
+  "토마토": { name: "토마토", n: { min: 80, max: 130 }, p: { min: 35, max: 70 }, k: { min: 120, max: 190 } },
+  "딸기": { name: "딸기", n: { min: 60, max: 110 }, p: { min: 30, max: 60 }, k: { min: 90, max: 150 } },
+  "상추": { name: "상추", n: { min: 50, max: 100 }, p: { min: 25, max: 55 }, k: { min: 70, max: 130 } },
+  "오이": { name: "오이", n: { min: 80, max: 140 }, p: { min: 35, max: 75 }, k: { min: 110, max: 180 } },
+  "고추": { name: "고추", n: { min: 70, max: 120 }, p: { min: 30, max: 65 }, k: { min: 100, max: 170 } }
 };
 
-// --- Logic: AI Calibration ---
+// 2. AI 보정 시뮬레이션 (Rule-based Soft-Sensing)
 export const calibrateSensorData = (
   rawN: number, rawP: number, rawK: number, 
   data: { ec: number; temp: number; moisture: number; rainfall: number; solar: number; }
 ): CalibrationResult => {
-  let multiplier = 1.0;
-  let confidence = 100;
-  let message = "최적 환경 내 정밀 분석 완료";
+  const mF = data.moisture < 20 ? 0.92 : data.moisture <= 60 ? 1.00 : 1.06;
+  const eF = data.ec >= 3.0 ? 0.92 : data.ec >= 2.5 ? 0.96 : 1.00;
+  const tF = (data.temp < 10 || data.temp > 35) ? 0.95 : 1.00;
+  const rF = data.rainfall >= 20 ? 0.90 : data.rainfall >= 10 ? 0.95 : 1.00;
 
-  if (data.moisture < 20) { multiplier *= 0.85; confidence -= 20; message = "저수분 신호 약화 보정 적용"; }
-  else if (data.moisture > 70) { multiplier *= 1.15; confidence -= 15; message = "고수분 희석 효과 보정 적용"; }
-  
-  if (data.ec >= 2.5) confidence -= 15;
-  if (data.temp < 10 || data.temp > 35) confidence -= 10;
-  if (data.rainfall >= 20) { multiplier *= 0.95; confidence -= 10; }
+  const calN = Math.round(rawN * mF * eF * tF * rF);
+  const calP = Math.round(rawP * mF * tF);
+  const calK = Math.round(rawK * mF * eF * rF);
+
+  // 신뢰도 점수 계산
+  let conf = 100;
+  if (data.moisture < 20 || data.moisture > 70) conf -= 20;
+  if (data.ec >= 2.5) conf -= 15;
+  if (data.temp < 10 || data.temp > 35) conf -= 15;
+  if (data.rainfall >= 20) conf -= 10;
+  if (rawN > 400 || rawN < 20 || rawP > 200 || rawP < 10) conf -= 10;
 
   return {
-    calibratedN: Math.round(rawN * multiplier),
-    calibratedP: Math.round(rawP * multiplier),
-    calibratedK: Math.round(rawK * multiplier),
-    confidenceScore: Math.max(0, confidence),
-    calibrationMessage: message
+    calibratedN: calN,
+    calibratedP: calP,
+    calibratedK: calK,
+    confidenceScore: Math.min(98, Math.max(40, conf)),
+    calibrationMessage: conf >= 80 ? "최적 환경 내 정밀 분석 완료" : "환경 간섭에 따른 보정값 적용됨"
   };
 };
 
-// --- Logic: Anomaly Detection ---
-export const analyzeAnomalies = (data: { n: number; ec: number; moisture: number; rainfall: number; temp: number; }): Anomaly[] => {
-  const anomalies: Anomaly[] = [];
-  if (data.ec >= 2.5) anomalies.push({ type: 'danger', message: '염류 집적 위험: 추가 시비를 중단하고 관수 또는 토양 세척을 권장합니다.' });
-  if (data.moisture < 20) anomalies.push({ type: 'warning', message: '토양 건조: 수분이 낮아 센서 측정값의 신뢰도가 저하될 수 있습니다.' });
-  if (data.moisture > 70) anomalies.push({ type: 'danger', message: '과습 위험: 양분 흡수 저하 또는 뿌리 손상 위험이 있습니다.' });
-  if (data.rainfall >= 20) anomalies.push({ type: 'info', message: '양분 유실 가능성: 강우로 인해 비료 효율이 낮아질 수 있으니 강우 후 재진단을 권장합니다.' });
-  if (data.temp < 10 || data.temp > 35) anomalies.push({ type: 'warning', message: '온도 불안정: 극한 기온으로 인해 생육 및 센서 안정성이 낮아질 수 있습니다.' });
-  return anomalies;
+// 3. 토양 건강 점수 계산
+export const calculateScores = (
+  crop: string,
+  cal: { n: number; p: number; k: number },
+  env: { ec: number; moisture: number; temp: number; rainfall: number }
+) => {
+  let score = 100;
+  const std = cropStandards[crop];
+
+  if (cal.n < std.n.min || cal.n > std.n.max) score -= 10;
+  if (cal.p < std.p.min || cal.p > std.p.max) score -= 10;
+  if (cal.k < std.k.min || cal.k > std.k.max) score -= 10;
+  if (env.ec >= 2.5) score -= 15;
+  if (env.moisture < 20 || env.moisture > 70) score -= 15;
+  if (env.temp < 10 || env.temp > 35) score -= 10;
+  if (env.rainfall >= 20) score -= 5;
+
+  score = Math.min(100, Math.max(30, score));
+  const status = score >= 85 ? "적정" : score >= 65 ? "주의" : "위험";
+
+  return { health: score, status };
 };
 
-// --- Logic: Dynamic Prescription ---
+// 4. 동적 시비 처방 엔진
 export const generatePrescription = (
   crop: string,
   cal: { n: number; p: number; k: number },
@@ -99,71 +94,57 @@ export const generatePrescription = (
   let summaryParts: string[] = [];
   let strategies: string[] = [];
   let precautions: string[] = [];
-  let nextDiagnosis = "3일 후 정기 진단";
+  let nextDiagnosis = "3일 후 정기 진단 권장";
 
-  const checkNutrient = (val: number, range: any, name: string, fertName: string) => {
+  const check = (val: number, range: any, name: string, fert: string) => {
     if (val < range.min) {
       summaryParts.push(`${name} 부족`);
-      strategies.push(`${name === '칼륨 (K)' ? fertName + '계 비료 분할 시비' : fertName + '계 비료 보충'}을 권장합니다.`);
+      strategies.push(`${name === '칼륨 (K)' ? fert + '계 비료 분할 시비' : fert + '계 비료 보충'}를 추천합니다.`);
     } else if (val > range.max) {
       summaryParts.push(`${name} 과잉`);
-      strategies.push(`${fertName}계 비료 투입 보류를 안내합니다.`);
+      strategies.push(`${fert}계 비료 투입 보류를 안내합니다.`);
     }
   };
 
-  checkNutrient(cal.n, std.n, "질소 (N)", "질소");
-  checkNutrient(cal.p, std.p, "인산 (P)", "인산");
-  checkNutrient(cal.k, std.k, "칼륨 (K)", "칼륨");
+  check(cal.n, std.n, "질소 (N)", "질소");
+  check(cal.p, std.p, "인산 (P)", "인산");
+  check(cal.k, std.k, "칼륨 (K)", "칼륨");
 
   if (summaryParts.length === 0) {
-    summaryParts.push("영양 상태 적정");
-    strategies.push("현재 상태를 유지하며 정기적으로 모니터링하십시오.");
+    summaryParts.push("영양 균형 최적");
+    strategies.push("현재의 관리 체계를 유지하십시오.");
   }
-
-  let summary = `현재 ${crop} 재배 기준에서 ${summaryParts.join(', ')} 상태입니다.`;
-  let strategy = strategies.join(' ');
 
   if (env.ec >= 2.5) {
-    strategy = "EC가 높으므로 전체 시비량을 대폭 줄이고 관수 또는 토양 세척을 최우선으로 권장합니다.";
+    strategies = ["EC가 높으므로 전체 시비량을 줄이고 관수 또는 토양 세척을 권장합니다."];
+    precautions.push("염류 집적 위험이 높으므로 추가 시비를 금지하십시오.");
   }
   if (env.moisture < 20) {
-    strategy = "토양이 매우 건조하므로 충분한 관수 후 재측정을 권장합니다.";
+    strategies.push("토양이 건조하므로 관수 후 재측정을 권장합니다.");
+    precautions.push("저수분으로 인한 측정 신뢰도 저하 구간입니다.");
   } else if (env.moisture > 70) {
-    strategy = "과습 상태이므로 배수 관리 후 재진단을 권장합니다.";
+    strategies.push("과습 상태이므로 배수 관리 후 재진단을 권장합니다.");
+    precautions.push("과습으로 인한 뿌리 손상 위험이 있습니다.");
   }
   if (env.rainfall >= 20) {
-    strategy = "강우량이 많으므로 즉시 시비보다 강우 종료 후 재진단을 권장합니다.";
+    strategies.push("강우량이 많으므로 즉시 시비보다 강우 종료 후 재진단을 권장합니다.");
+    precautions.push("강우에 따른 양분 유실 가능성이 큽니다.");
   }
 
-  return { summary, strategy, precautions, nextDiagnosis };
+  return {
+    summary: `현재 ${crop} 재배 기준, ${summaryParts.join(', ')} 상태입니다.`,
+    strategy: strategies.join(' '),
+    precautions: precautions.length > 0 ? precautions : ["생육 단계별 표준 지침을 준수하세요."],
+    nextDiagnosis: (env.ec >= 2.5 || env.rainfall >= 20) ? "24시간 후 재분석" : "3일 후 정기 진단"
+  };
 };
 
-// --- Logic: Health Scoring ---
-export const calculateScores = (
-  crop: string,
-  cal: { n: number; p: number; k: number },
-  env: { ec: number; moisture: number; temp: number }
-) => {
-  const std = cropStandards[crop];
-  let health = 100;
-
-  // NPK Balance
-  if (cal.n < std.n.min || cal.n > std.n.max) health -= 10;
-  if (cal.p < std.p.min || cal.p > std.p.max) health -= 10;
-  if (cal.k < std.k.min || cal.k > std.k.max) health -= 10;
-
-  // Env
-  if (env.ec >= 2.5) health -= 25;
-  if (env.moisture < 25 || env.moisture > 65) health -= 15;
-  if (env.temp < 15 || env.temp > 32) health -= 10;
-
-  let suitability = 100;
-  const nDev = Math.abs((std.n.min + std.n.max) / 2 - cal.n) / ((std.n.min + std.n.max) / 2);
-  const kDev = Math.abs((std.k.min + std.k.max) / 2 - cal.k) / ((std.k.min + std.k.max) / 2);
-  suitability -= (nDev + kDev) * 50;
-
-  return { 
-    health: Math.max(5, health), 
-    suitability: Math.max(5, Math.round(suitability)) 
-  };
+export const analyzeAnomalies = (data: { n: number; ec: number; moisture: number; rainfall: number; temp: number }): Anomaly[] => {
+  const anomalies: Anomaly[] = [];
+  if (data.ec >= 2.5) anomalies.push({ type: 'danger', message: '염류 집적 위험이 감지되었습니다.' });
+  if (data.moisture < 20) anomalies.push({ type: 'warning', message: '토양 수분이 낮아 센서 신뢰도가 저하될 수 있습니다.' });
+  if (data.moisture > 70) anomalies.push({ type: 'danger', message: '과습 상태입니다. 뿌리 활력 저하에 주의하세요.' });
+  if (data.rainfall >= 20) anomalies.push({ type: 'info', message: '강우로 인한 양분 유실 가능성이 있습니다.' });
+  if (data.temp < 10 || data.temp > 35) anomalies.push({ type: 'warning', message: '온도 불안정으로 인한 센서 안정성 저하 가능성.' });
+  return anomalies;
 };
