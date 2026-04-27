@@ -5,7 +5,7 @@ import {
   CloudRain, Activity, AlertCircle, CheckCircle2, Zap, LayoutDashboard, 
   LogOut, RefreshCw, TrendingUp, ShieldCheck, AlertTriangle, Info, Check, 
   Star, ArrowUpCircle, ArrowDownCircle, MinusCircle, Calendar, MapPin, 
-  ClipboardList, Play, Layers, Globe, Search, Bell
+  ClipboardList, Play, Layers, Globe, Search, Bell, Brain
 } from 'lucide-react';
 import { 
   calibrateSensorData, CalibrationResult, analyzeAnomalies, Anomaly, 
@@ -210,7 +210,7 @@ function App() {
               {[
                 { label: 'IoT 센서 계층', desc: 'NPK, EC, 수분, 온도 수집', icon: <Database />, color: 'emerald' },
                 { label: '외부 데이터 연동', desc: '기상청 API, 작물 표준 DB', icon: <Globe />, color: 'blue' },
-                { label: 'AI 보정 계층', desc: '노이즈 제거, 신뢰도 산출', icon: <BrainCircuit />, color: 'purple' },
+                { label: 'AI 보정 계층', desc: '노이즈 제거, 신뢰도 산출', icon: <Brain />, color: 'purple' },
                 { label: '의사결정 엔진', desc: '영양 분석 및 처방 알고리즘', icon: <Cpu />, color: 'amber' },
                 { label: '사용자 리포트', desc: '시각화 및 영농일지 자동화', icon: <LayoutDashboard />, color: 'emerald' },
               ].map((item, i) => (
@@ -449,7 +449,7 @@ function App() {
 
                   {/* AI Strategy Box */}
                   <div className="bg-slate-900 rounded-[64px] p-16 text-white relative overflow-hidden shadow-5xl border-[16px] border-slate-800">
-                    <div className="absolute top-0 right-0 p-16 opacity-5 animate-spin-slow"><BrainCircuit className="w-[600px] h-[600px]" /></div>
+                    <div className="absolute top-0 right-0 p-16 opacity-5 animate-spin-slow"><Brain className="w-[600px] h-[600px]" /></div>
                     <div className="relative z-10 flex flex-col xl:flex-row gap-32">
                        <div className="flex-1 space-y-14">
                           <div className="space-y-8">
