@@ -5,7 +5,7 @@ import {
   CloudRain, Activity, AlertCircle, CheckCircle2, Zap, LayoutDashboard, 
   LogOut, RefreshCw, TrendingUp, ShieldCheck, AlertTriangle, Info, Check, 
   Star, ArrowUpCircle, ArrowDownCircle, MinusCircle, Calendar, MapPin, 
-  ClipboardList, Play, Layers, Globe, Brain, Fingerprint, Waves
+  ClipboardList, Play, Layers, Globe, Brain, Fingerprint, Waves, ClipboardCheck
 } from 'lucide-react';
 import { 
   calibrateSensorData, CalibrationResult, analyzeAnomalies, Anomaly, 
@@ -26,10 +26,11 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState('');
   const [showResult, setShowResult] = useState(false);
+  const [showPrescription, setShowPrescription] = useState(false);
   const [result, setResult] = useState<CalibrationResult | null>(null);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [prescription, setPrescription] = useState<PrescriptionResult | null>(null);
-  const [scores, setScores] = useState({ health: 92, status: '적정' });
+  const [scores, setScores] = useState({ health: 92, status: '적정', suitability: 95 });
   const [copySuccess, setCopyStatus] = useState(false);
   const [isHighlighting, setIsHighlighting] = useState(false);
 
@@ -37,6 +38,18 @@ function App() {
   const [sensorData, setSensorData] = useState<SensorData>({
     n: 150, p: 45, k: 210, ec: 2.1, temp: 24.5, moisture: 35, rainfall: 0, solar: 450
   });
+
+  // --- Helpers ---
+  const getNutrientStatus = (val: number, min: number, max: number) => {
+    if (val < min) return { label: '부족', color: 'text-rose-600', bg: 'bg-rose-50', icon: <ArrowDownCircle />, recommendation: '보충 필요' };
+    if (val > max) return { label: '과잉', color: 'text-amber-600', bg: 'bg-amber-50', icon: <ArrowUpCircle />, recommendation: '투입 보류' };
+    return { label: '적정', color: 'text-emerald-600', bg: 'bg-emerald-50', icon: <CheckCircle2 />, recommendation: '유지 관리' };
+  };
+
+  const handleCropChange = (crop: Crop) => {
+    setSelectedCrop(crop);
+    runAnalysisWithAnimation();
+  };
 
   // --- Real-time Core Engine ---
   const computeAll = (data: SensorData, crop: Crop) => {
@@ -67,6 +80,7 @@ function App() {
   const runAnalysisWithAnimation = () => {
     setIsAnalyzing(true);
     setShowResult(false);
+    setShowPrescription(false);
     setIsHighlighting(false);
 
     const steps = ['Raw 데이터 로드...', '환경 노이즈 필터링...', 'AI Soft-Sensing 보정...', '작물별 처방 알고리즘 가동...'];
@@ -75,6 +89,7 @@ function App() {
     setTimeout(() => {
       setIsAnalyzing(false);
       setShowResult(true);
+      setShowPrescription(true);
       setIsHighlighting(true);
       setTimeout(() => {
         resultRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -386,7 +401,7 @@ function App() {
                           <div className="p-32 space-y-48">
                              {/* NPK Macro Analytics Cards */}
                              <div className="grid grid-cols-1 md:grid-cols-3 gap-20">
-                                {['n', 'p', 'k'].map((nut) => {
+                                {(['n', 'p', 'k'] as const).map((nut) => {
                                   const standard = cropStandards[selectedCrop][nut];
                                   const calVal = nut === 'n' ? result.calibratedN : nut === 'p' ? result.calibratedP : result.calibratedK;
                                   const status = getNutrientStatus(calVal, standard.min, standard.max);
@@ -478,19 +493,5 @@ function App() {
     </div>
   );
 }
-
-const ArchitectureLayer = ({ title, items, icon, color }: { title: string, items: string[], icon: any, color: string }) => (
-  <div className="bg-white p-12 rounded-[56px] border border-slate-100 shadow-[0_40px_80px_-20px_rgba(0,0,0,0.05)] relative group hover:shadow-4xl hover:translate-y-[-20px] transition-all duration-700 flex flex-col items-center text-center">
-    <div className={`w-24 h-24 rounded-[32px] bg-${color}-50 flex items-center justify-center text-${color}-600 mb-12 shadow-inner group-hover:rotate-[360deg] transition-all duration-1000 border-2 border-white`}>{React.cloneElement(icon as React.ReactElement, { className: 'w-12 h-12' })}</div>
-    <h5 className="font-black text-slate-900 text-lg mb-8 uppercase tracking-[0.3em] italic leading-tight">{title}</h5>
-    <ul className="space-y-6 w-full">
-      {items.map((item, i) => (
-        <li key={i} className="text-xs font-black text-slate-400 flex items-center justify-center gap-4">
-          <div className={`w-2 h-2 rounded-full shadow-lg bg-${color}-500`} /> {item}
-        </li>
-      ))}
-    </ul>
-  </div>
-);
 
 export default App;

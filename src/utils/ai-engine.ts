@@ -85,7 +85,7 @@ export const analyzeAnomalies = (data: { n: number; ec: number; moisture: number
 };
 
 // --- Logic 3: Soil Health Scoring ---
-export const calculateSoilHealth = (
+export const calculateScores = (
   crop: string,
   cal: { n: number; p: number; k: number },
   env: { ec: number; moisture: number; temp: number; rainfall: number }
@@ -106,7 +106,7 @@ export const calculateSoilHealth = (
   const finalScore = Math.min(100, Math.max(30, score));
   const status = finalScore >= 85 ? "적정" : finalScore >= 65 ? "주의" : "위험";
 
-  return { score: finalScore, status };
+  return { health: finalScore, status, suitability: Math.floor(finalScore * 0.98) };
 };
 
 // --- Logic 4: Dynamic Prescription Generator ---
